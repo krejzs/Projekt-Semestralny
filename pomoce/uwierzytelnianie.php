@@ -2,10 +2,6 @@
 
 declare(strict_types=1);
 
-/**
- * Wyjątek używany do komunikowania błędów logiki logowania/rejestracji
- * w sposób, który można bezpiecznie wyświetlić użytkownikowi.
- */
 class AuthException extends Exception
 {
 }
@@ -31,12 +27,6 @@ function email_exists(PDO $pdo, string $email): bool
     return (bool) $stmt->fetch();
 }
 
-/**
- * Rejestruje nowego klienta. Hasło jest hashowane funkcją password_hash()
- * (bcrypt) - nigdy nie zapisujemy hasła jawnym tekstem.
- *
- * @throws AuthException gdy e-mail jest już zajęty
- */
 function register_user(PDO $pdo, string $firstName, string $lastName, string $email, string $password): int
 {
     if (email_exists($pdo, $email)) {
@@ -124,13 +114,6 @@ function reset_failed_attempts(PDO $pdo, int $userId): void
     $stmt->execute(['id' => $userId]);
 }
 
-/**
- * Próba logowania. Rzuca AuthException z komunikatem bezpiecznym
- * do wyświetlenia użytkownikowi (bez ujawniania szczegółów technicznych
- * ani informacji, czy dany e-mail w ogóle istnieje w bazie).
- *
- * @throws AuthException
- */
 function attempt_login(PDO $pdo, string $email, string $password): array
 {
     $user = find_user_by_email($pdo, $email);
@@ -162,10 +145,6 @@ function attempt_login(PDO $pdo, string $email, string $password): array
     return $user;
 }
 
-/**
- * Zapisuje dane zalogowanego użytkownika w sesji.
- * session_regenerate_id() chroni przed atakiem session fixation.
- */
 function login_session(array $user): void
 {
     session_regenerate_id(true);
@@ -215,12 +194,6 @@ function verify_email_token(PDO $pdo, string $token): bool
     return true;
 }
 
-/**
- * Tworzy token resetu hasła ważny 1 godzinę.
- * Zwraca null gdy e-mail nie istnieje - wywołujący kod MUSI mimo to
- * wyświetlić ten sam komunikat co przy sukcesie (ochrona przed
- * enumeracją kont zarejestrowanych w systemie).
- */
 function create_password_reset_token(PDO $pdo, string $email): ?string
 {
     $user = find_user_by_email($pdo, $email);
@@ -270,11 +243,6 @@ function apply_password_reset(PDO $pdo, array $resetRow, string $newPassword): v
     }
 }
 
-/**
- * Zmiana hasła przez zalogowanego użytkownika - wymaga podania starego hasła.
- *
- * @throws AuthException gdy stare hasło jest błędne
- */
 function change_password(PDO $pdo, int $userId, string $oldPassword, string $newPassword): void
 {
     $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = :id');
@@ -290,9 +258,6 @@ function change_password(PDO $pdo, int $userId, string $oldPassword, string $new
     $stmt->execute(['hash' => $hash, 'id' => $userId]);
 }
 
-/**
- * Aktualizacja podstawowych danych profilu (bez hasła).
- */
 function update_profile(PDO $pdo, int $userId, string $firstName, string $lastName, string $phone): void
 {
     $stmt = $pdo->prepare(
