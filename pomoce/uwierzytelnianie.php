@@ -95,7 +95,7 @@ function register_failed_attempt(PDO $pdo, array $user): void
 
     if ($attempts >= MAX_LOGIN_ATTEMPTS) {
         $lockedUntil = date('Y-m-d H:i:s', time() + LOCKOUT_MINUTES * 60);
-        $attempts    = 0; // licznik jest zerowany po nałożeniu blokady
+        $attempts    = 0;
     }
 
     $stmt = $pdo->prepare(
