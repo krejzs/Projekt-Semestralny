@@ -35,3 +35,6 @@ public/      - pliki publiczne
 README.md
 
 Skrypt tworzy wszystkie tabele wraz z kluczami obcymi, ograniczeniami (`CHECK`, `UNIQUE`) oraz przykładowymi danymi testowymi.
+LOGIN DO ADMINA 
+email: admin@admin.pl
+hasło ADMIN123
