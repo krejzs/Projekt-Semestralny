@@ -11,6 +11,8 @@ session_start();
 define('SESSION_LIFETIME', 60 * 60 * 2); // 2 godziny bezczynności - wylogowanie
 define('MAX_LOGIN_ATTEMPTS', 5);         // liczba prób przed zablokowaniem konta
 define('LOCKOUT_MINUTES', 15);           // czas blokady konta po przekroczeniu limitu
+define('BASE_URL', '');
+
 
 require_once __DIR__ . '/baza_danych.php';
 require_once __DIR__ . '/../pomoce/funkcje_pomocnicze.php';
