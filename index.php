@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>System rezerwacji usług</title>
-    <link rel="stylesheet" href="/zasoby/styl.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/zasoby/styl.css">
 </head>
 <body>
 
@@ -65,11 +65,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     utworzyc plik pod wskazana sciezka, link juz tu czeka.
 -->
 <nav class="topbar" style="max-width:480px;margin:24px auto 0;">
-    <div><a href="/index.php"><strong>System rezerwacji usług</strong></a></div>
+    <div><a href="<?= BASE_URL ?>/index.php"><strong>Szkoła Językowa</strong></a></div>
     <div>
-        <a href="/publiczne/uslugi.php">Usługi</a>
+        <a href="<?= BASE_URL ?>/publiczne/uslugi.php">Usługi</a>
         &nbsp;|&nbsp;
-        <a href="/publiczne/rejestracja.php">Rejestracja</a>
+        <a href="<?= BASE_URL ?>/publiczne/rejestracja.php">Rejestracja</a>
     </div>
 </nav>
 
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     <?php endif; ?>
 
-    <form method="post" action="/index.php" novalidate>
+    <form method="post" action="<?= BASE_URL ?>/index.php" novalidate>
         <?= csrf_field() ?>
 
         <label>Adres e-mail
@@ -105,9 +105,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 
     <p>
-        <a href="/publiczne/zapomniane_haslo.php">Nie pamiętasz hasła?</a>
+        <a href="<?= BASE_URL ?>/publiczne/zapomniane_haslo.php">Nie pamiętasz hasła?</a>
     </p>
-    <p>Nie masz jeszcze konta? <a href="/publiczne/rejestracja.php">Zarejestruj się</a></p>
+    <p>Nie masz jeszcze konta? <a href="<?= BASE_URL ?>/publiczne/rejestracja.php">Zarejestruj się</a></p>
 </div>
 </body>
 </html>
