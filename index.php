@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>System rezerwacji usług</title>
+    <title>Szkoła Językowa</title>
     <link rel="stylesheet" href="<?= BASE_URL ?>/zasoby/styl.css">
 </head>
 <body>
