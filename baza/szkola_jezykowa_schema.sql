@@ -15,6 +15,14 @@ DROP TABLE IF EXISTS languages;
 DROP TABLE IF EXISTS teachers;
 DROP TABLE IF EXISTS students;
 DROP TABLE IF EXISTS payment_methods;
+DROP TABLE IF EXISTS reservations;
+DROP TABLE IF EXISTS employee_availability;
+DROP TABLE IF EXISTS employee_services;
+DROP TABLE IF EXISTS services;
+DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS employees;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS reservation_statuses;
 
 CREATE TABLE languages (
     id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -219,6 +227,135 @@ CREATE TABLE attendance (
     CONSTRAINT uq_enrollment_lesson UNIQUE (enrollment_id, lesson_id)
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------------
+-- 1. UŻYTKOWNICY (klienci)
+-- ---------------------------------------------------------------------
+CREATE TABLE users (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    first_name      VARCHAR(50)  NOT NULL,
+    last_name       VARCHAR(50)  NOT NULL,
+    email           VARCHAR(100) NOT NULL,
+    password_hash   VARCHAR(255) NOT NULL,
+    phone           VARCHAR(20),
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_users_email UNIQUE (email)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 2. PRACOWNICY
+-- ---------------------------------------------------------------------
+CREATE TABLE employees (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    first_name      VARCHAR(50)  NOT NULL,
+    last_name       VARCHAR(50)  NOT NULL,
+    email           VARCHAR(100) NOT NULL,
+    phone           VARCHAR(20),
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_employees_email UNIQUE (email)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 3. KATEGORIE USŁUG
+-- ---------------------------------------------------------------------
+CREATE TABLE categories (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    name            VARCHAR(80) NOT NULL,
+    CONSTRAINT uq_categories_name UNIQUE (name)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 4. USŁUGI
+-- ---------------------------------------------------------------------
+CREATE TABLE services (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    category_id     INT NOT NULL,
+    name            VARCHAR(100) NOT NULL,
+    description     TEXT,
+    price           DECIMAL(8,2) NOT NULL CHECK (price >= 0),
+    duration_minutes INT NOT NULL CHECK (duration_minutes > 0),
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_services_category
+        FOREIGN KEY (category_id) REFERENCES categories(id)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 5. RELACJA N:M PRACOWNICY <-> USŁUGI
+--    (który pracownik jaką usługę potrafi/może wykonać)
+-- ---------------------------------------------------------------------
+CREATE TABLE employee_services (
+    employee_id     INT NOT NULL,
+    service_id      INT NOT NULL,
+    PRIMARY KEY (employee_id, service_id),
+    CONSTRAINT fk_es_employee
+        FOREIGN KEY (employee_id) REFERENCES employees(id)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_es_service
+        FOREIGN KEY (service_id) REFERENCES services(id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 6. DOSTĘPNOŚĆ PRACOWNIKÓW
+--    (cykliczne okna dostępności w tygodniu)
+-- ---------------------------------------------------------------------
+CREATE TABLE employee_availability (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    employee_id     INT NOT NULL,
+    day_of_week     TINYINT NOT NULL CHECK (day_of_week BETWEEN 1 AND 7), -- 1=pon ... 7=nd
+    start_time      TIME NOT NULL,
+    end_time        TIME NOT NULL,
+    CONSTRAINT chk_availability_hours CHECK (end_time > start_time),
+    CONSTRAINT fk_availability_employee
+        FOREIGN KEY (employee_id) REFERENCES employees(id)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 7. SŁOWNIK STATUSÓW REZERWACJI
+-- ---------------------------------------------------------------------
+CREATE TABLE reservation_statuses (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    name            VARCHAR(30) NOT NULL,
+    CONSTRAINT uq_status_name UNIQUE (name)
+) ENGINE=InnoDB;
+
+INSERT INTO reservation_statuses (name) VALUES
+    ('pending'), ('confirmed'), ('cancelled'), ('completed');
+
+-- ---------------------------------------------------------------------
+-- 8. REZERWACJE (łączy klienta, pracownika i usługę)
+-- ---------------------------------------------------------------------
+CREATE TABLE reservations (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    client_id       INT NOT NULL,
+    employee_id     INT NOT NULL,
+    service_id      INT NOT NULL,
+    status_id       INT NOT NULL DEFAULT 1,
+    reservation_date DATE NOT NULL,
+    start_time      TIME NOT NULL,
+    end_time        TIME NOT NULL,
+    price_at_booking DECIMAL(8,2) NOT NULL, -- świadoma denormalizacja:
+                                             -- zachowuje cenę usługi z chwili rezerwacji,
+                                             -- niezależnie od późniejszych zmian cennika
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_reservation_hours CHECK (end_time > start_time),
+    CONSTRAINT fk_res_client
+        FOREIGN KEY (client_id) REFERENCES users(id)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_res_employee
+        FOREIGN KEY (employee_id) REFERENCES employees(id)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_res_service
+        FOREIGN KEY (service_id) REFERENCES services(id)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_res_status
+        FOREIGN KEY (status_id) REFERENCES reservation_statuses(id)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+    -- Zapobiega podwójnej rezerwacji tego samego pracownika w tym samym terminie
+    CONSTRAINT uq_employee_slot UNIQUE (employee_id, reservation_date, start_time)
+) ENGINE=InnoDB;
+
 -- =====================================================================
 -- PRZYKŁADOWE DANE TESTOWE
 -- =====================================================================
@@ -254,3 +391,25 @@ INSERT INTO payments (enrollment_id, payment_method_id, amount) VALUES
 
 INSERT INTO attendance (enrollment_id, lesson_id, present) VALUES
     (1, 1, TRUE), (2, 1, TRUE), (1, 2, FALSE), (2, 2, TRUE);
+
+INSERT INTO categories (name) VALUES ('Fryzjerstwo'), ('Kosmetyka'), ('Masaż');
+
+INSERT INTO users (first_name, last_name, email, password_hash, phone) VALUES
+    ('Anna', 'Kowalska', 'anna.kowalska@example.com', 'hash123', '600100200');
+
+INSERT INTO employees (first_name, last_name, email, phone) VALUES
+    ('Piotr', 'Nowak', 'piotr.nowak@example.com', '600300400');
+
+INSERT INTO services (category_id, name, description, price, duration_minutes) VALUES
+    (1, 'Strzyżenie damskie', 'Mycie, strzyżenie, stylizacja', 80.00, 45),
+    (3, 'Masaż relaksacyjny', 'Masaż całego ciała', 150.00, 60);
+
+INSERT INTO employee_services (employee_id, service_id) VALUES (1, 1), (1, 2);
+
+INSERT INTO employee_availability (employee_id, day_of_week, start_time, end_time) VALUES
+    (1, 1, '09:00:00', '17:00:00'),
+    (1, 2, '09:00:00', '17:00:00');
+
+INSERT INTO reservations (client_id, employee_id, service_id, status_id, reservation_date, start_time, end_time, price_at_booking)
+VALUES (1, 1, 1, 2, '2026-09-20', '10:00:00', '10:45:00', 80.00);
+
