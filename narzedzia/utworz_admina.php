@@ -2,10 +2,6 @@
 
 declare(strict_types=1);
 
-/**
- * php narzedzia/utworz_admina.php "Jan" "Kowalski" "admin@firma.pl" "MocneHaslo123!"
- * Uruchamiac tylko z konsoli.
- */
 
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
@@ -41,6 +37,13 @@ if (email_exists($pdo, $email)) {
 
 $hash   = password_hash($password, PASSWORD_DEFAULT);
 $roleId = get_role_id($pdo, 'admin');
+
+$stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE role_id = :role_id');
+$stmt->execute(['role_id' => $roleId]);
+if ((int) $stmt->fetchColumn() > 0) {
+    fwrite(STDERR, "Administrator już istnieje. W systemie może być tylko jeden.\n");
+    exit(1);
+}
 
 $stmt = $pdo->prepare(
     'INSERT INTO users (first_name, last_name, email, password_hash, role_id, is_email_verified)
