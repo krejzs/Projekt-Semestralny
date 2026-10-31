@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-
 function nazwa_statusu(string $status): string
 {
     $nazwy = [
@@ -132,6 +131,10 @@ function uzupelnij_profile_lektorow(PDO $pdo): void
 
 function zmien_role(PDO $pdo, int $id_konta, string $nowa_rola): void
 {
+    if ($nowa_rola === 'admin' || rola_konta($pdo, $id_konta) === 'admin') {
+        throw new Exception('Administrator może być tylko jeden - roli administratora nie zmieniamy.');
+    }
+
     $id_roli = get_role_id($pdo, $nowa_rola);
 
     try {
@@ -157,4 +160,56 @@ function zmien_role(PDO $pdo, int $id_konta, string $nowa_rola): void
         }
         throw $e;
     }
+}
+
+function usun_konto(PDO $pdo, int $id_konta): ?string
+{
+    $rola = rola_konta($pdo, $id_konta);
+
+    if ($rola === null) {
+        return 'Nie ma takiego konta.';
+    }
+    if ($rola === 'admin') {
+        return 'Konta administratora nie można usunąć.';
+    }
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM reservations WHERE client_id = :id');
+    $stmt->execute(['id' => $id_konta]);
+    if ((int) $stmt->fetchColumn() > 0) {
+        return 'To konto ma zapisy na lekcje, więc nie można go usunąć.';
+    }
+
+    $stmt = $pdo->prepare('SELECT id FROM employees WHERE user_id = :id');
+    $stmt->execute(['id' => $id_konta]);
+    $id_lektora = $stmt->fetchColumn();
+
+    if ($id_lektora !== false) {
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM reservations WHERE employee_id = :id');
+        $stmt->execute(['id' => $id_lektora]);
+        if ((int) $stmt->fetchColumn() > 0) {
+            return 'Ten lektor ma zapisy uczniów, więc nie można usunąć jego konta.';
+        }
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        if ($id_lektora !== false) {
+            $stmt = $pdo->prepare('DELETE FROM employees WHERE id = :id');
+            $stmt->execute(['id' => $id_lektora]);
+        }
+
+        $stmt = $pdo->prepare('DELETE FROM users WHERE id = :id');
+        $stmt->execute(['id' => $id_konta]);
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log($e->getMessage());
+        return 'Nie udało się usunąć konta.';
+    }
+
+    return null;
 }
