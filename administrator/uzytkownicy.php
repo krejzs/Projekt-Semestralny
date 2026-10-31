@@ -8,33 +8,60 @@ require_role(['admin']);
 $pdo   = getPDO();
 $bledy = [];
 
-// --- odblokowanie konta (po zbyt wielu nieudanych logowaniach) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
         $bledy[] = 'Sesja formularza wygasła. Odśwież stronę i spróbuj ponownie.';
-    } elseif (($_POST['akcja'] ?? '') === 'odblokuj') {
-        $stmt = $pdo->prepare('UPDATE users SET locked_until = NULL, failed_login_attempts = 0 WHERE id = :id');
-        $stmt->execute(['id' => (int) ($_POST['id'] ?? 0)]);
-        flash('success', 'Konto zostało odblokowane.');
-        redirect('/administrator/uzytkownicy.php');
+    } else {
+        $akcja = $_POST['akcja'] ?? '';
+        $id    = (int) ($_POST['id'] ?? 0);
+
+        if ($akcja === 'odblokuj') {
+            $stmt = $pdo->prepare('UPDATE users SET locked_until = NULL, failed_login_attempts = 0 WHERE id = :id');
+            $stmt->execute(['id' => $id]);
+            flash('success', 'Konto zostało odblokowane.');
+            redirect('/administrator/uzytkownicy.php');
+
+        } elseif ($akcja === 'usun') {
+            if ($id === (int) current_user_id()) {
+                flash('error', 'Nie możesz usunąć własnego konta.');
+            } else {
+                $blad = usun_konto($pdo, $id);
+
+                if ($blad === null) {
+                    flash('success', 'Konto zostało usunięte.');
+                } else {
+                    flash('error', $blad);
+                }
+            }
+            redirect('/administrator/uzytkownicy.php');
+        }
     }
 }
 
-// --- wyszukiwanie ---
-$szukaj = trim((string) ($_GET['szukaj'] ?? ''));
+$szukaj     = trim((string) ($_GET['szukaj'] ?? ''));
+$filtr_rola = (string) ($_GET['rola'] ?? '');
+if (!in_array($filtr_rola, wszystkie_role(), true)) {
+    $filtr_rola = '';
+}
 
-$gdzie     = '';
+$warunki   = [];
 $parametry = [];
+
 if ($szukaj !== '') {
-    $gdzie = "WHERE (CONCAT(u.first_name, ' ', u.last_name) LIKE :szukaj1 OR u.email LIKE :szukaj2)";
+    $warunki[]            = "(CONCAT(u.first_name, ' ', u.last_name) LIKE :szukaj1 OR u.email LIKE :szukaj2)";
     $parametry['szukaj1'] = '%' . $szukaj . '%';
     $parametry['szukaj2'] = '%' . $szukaj . '%';
 }
+if ($filtr_rola !== '') {
+    $warunki[]          = 'r.name = :rola';
+    $parametry['rola']  = $filtr_rola;
+}
 
-// --- paginacja: 10 kont na strone ---
+$gdzie = empty($warunki) ? '' : 'WHERE ' . implode(' AND ', $warunki);
+
 $na_stronie = 10;
 
-$stmt = $pdo->prepare('SELECT COUNT(*) FROM users u ' . $gdzie);
+$stmt = $pdo->prepare('SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id ' . $gdzie);
 $stmt->execute($parametry);
 $razem = (int) $stmt->fetchColumn();
 
@@ -67,6 +94,16 @@ require __DIR__ . '/../czesci_wspolne/admin_gora.php';
         <label>Szukaj (imię, nazwisko lub e-mail)
             <input type="text" name="szukaj" value="<?= e($szukaj) ?>">
         </label>
+        <label>Rola
+            <select name="rola">
+                <option value="">Wszystkie</option>
+                <?php foreach (wszystkie_role() as $kod): ?>
+                    <option value="<?= e($kod) ?>" <?= $kod === $filtr_rola ? 'selected' : '' ?>>
+                        <?= e(nazwa_roli($kod)) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </label>
         <div>
             <button type="submit" class="przycisk">Szukaj</button>
             <a href="<?= BASE_URL ?>/administrator/uzytkownicy.php" class="przycisk przycisk-szary">Wyczyść</a>
@@ -90,6 +127,7 @@ require __DIR__ . '/../czesci_wspolne/admin_gora.php';
                         <th>Rola</th>
                         <th>E-mail potwierdzony</th>
                         <th>Blokada</th>
+                        <th>Akcje</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -99,13 +137,23 @@ require __DIR__ . '/../czesci_wspolne/admin_gora.php';
                             <td><?= (int) $u['id'] ?></td>
                             <td><?= e($u['first_name'] . ' ' . $u['last_name']) ?></td>
                             <td><?= e($u['email']) ?></td>
-                            <td><?= e(nazwa_roli($u['rola'])) ?></td>
+                            <td>
+                                <?= e(nazwa_roli($u['rola'])) ?>
+                                <?= (int) $u['id'] === (int) current_user_id() ? '(to Ty)' : '' ?>
+                            </td>
                             <td><?= $u['is_email_verified'] ? 'tak' : 'nie' ?></td>
                             <td>
                                 <?php if ($zablokowane): ?>
                                     <?= przycisk_post('odblokuj', (int) $u['id'], 'Odblokuj', 'przycisk-szary') ?>
                                 <?php else: ?>
                                     -
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($u['rola'] === 'admin' || (int) $u['id'] === (int) current_user_id()): ?>
+                                    -
+                                <?php else: ?>
+                                    <?= przycisk_post('usun', (int) $u['id'], 'Usuń', 'przycisk-czerwony', 'Czy na pewno usunąć konto ' . $u['first_name'] . ' ' . $u['last_name'] . '? Tej operacji nie można cofnąć.') ?>
                                 <?php endif; ?>
                             </td>
                         </tr>
