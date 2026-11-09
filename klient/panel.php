@@ -3,7 +3,6 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../konfiguracja/ustawienia.php';
 
-// tylko uczen (klient)
 require_role(['client']);
 
 $pdo       = getPDO();
@@ -14,7 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
         $bledy[] = 'Sesja formularza wygasła. Odśwież stronę i spróbuj ponownie.';
     } elseif (($_POST['akcja'] ?? '') === 'anuluj') {
-        // id ucznia bierzemy z sesji, a nie z formularza - nie da sie anulowac cudzego zapisu
         if (anuluj_zapis_ucznia($pdo, (int) ($_POST['id'] ?? 0), $id_ucznia)) {
             flash('success', 'Zapis został anulowany.');
         } else {
