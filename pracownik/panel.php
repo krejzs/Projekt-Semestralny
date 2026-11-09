@@ -5,72 +5,142 @@ require_once __DIR__ . '/../konfiguracja/ustawienia.php';
 
 require_role(['employee']);
 
-$pdo = getPDO();
+$pdo   = getPDO();
+$bledy = [];
 
-$stmt = $pdo->prepare('SELECT id, first_name, last_name FROM employees WHERE user_id = :user_id');
-$stmt->execute(['user_id' => current_user_id()]);
-$employee = $stmt->fetch();
+uzupelnij_profile_lektorow($pdo);
 
-$reservations = [];
-if ($employee) {
-    $stmt = $pdo->prepare(
-        'SELECT r.id, r.reservation_date, r.start_time, r.end_time,
-                s.name AS service_name,
-                CONCAT(u.first_name, \' \', u.last_name) AS client_name,
-                st.name AS status_name
-         FROM reservations r
-         JOIN services s ON s.id = r.service_id
-         JOIN users u ON u.id = r.client_id
-         JOIN reservation_statuses st ON st.id = r.status_id
-         WHERE r.employee_id = :employee_id
-         ORDER BY r.reservation_date ASC, r.start_time ASC'
-    );
-    $stmt->execute(['employee_id' => $employee['id']]);
-    $reservations = $stmt->fetchAll();
+$stmt = $pdo->prepare('SELECT id FROM employees WHERE user_id = :konto');
+$stmt->execute(['konto' => current_user_id()]);
+$lektor = $stmt->fetch();
+
+$jezyki_lektora = $lektor ? jezyki_lektora($pdo, (int) $lektor['id']) : [];
+
+$widok = (string) ($_GET['widok'] ?? 'dzis');
+if (!in_array($widok, ['dzis', 'przyszle', 'historia'], true)) {
+    $widok = 'dzis';
 }
+
+$wizyty    = [];
+$razem     = 0;
+$ile_stron = 1;
+$strona    = 1;
+
+if ($lektor) {
+    if ($widok === 'dzis') {
+        $warunek_daty = 'r.reservation_date = :dzis';
+        $kolejnosc    = 'r.start_time ASC';
+    } elseif ($widok === 'przyszle') {
+        $warunek_daty = 'r.reservation_date > :dzis';
+        $kolejnosc    = 'r.reservation_date ASC, r.start_time ASC';
+    } else {
+        $warunek_daty = 'r.reservation_date < :dzis';
+        $kolejnosc    = 'r.reservation_date DESC, r.start_time DESC';
+    }
+
+    $z_tabel = "FROM reservations r
+                JOIN services s ON s.id = r.service_id
+                JOIN users u ON u.id = r.client_id
+                JOIN reservation_statuses st ON st.id = r.status_id
+                WHERE r.employee_id = :lektor AND " . $warunek_daty;
+
+    $parametry = ['lektor' => $lektor['id'], 'dzis' => date('Y-m-d')];
+
+    $na_stronie = 10;
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) ' . $z_tabel);
+    $stmt->execute($parametry);
+    $razem = (int) $stmt->fetchColumn();
+
+    $ile_stron  = max(1, (int) ceil($razem / $na_stronie));
+    $strona     = min(numer_strony(), $ile_stron);
+    $od_wiersza = ($strona - 1) * $na_stronie;
+
+    $stmt = $pdo->prepare(
+        "SELECT r.id, r.reservation_date, r.start_time, r.end_time,
+                s.name AS lekcja,
+                CONCAT(u.first_name, ' ', u.last_name) AS uczen, u.phone AS telefon,
+                st.name AS status "
+        . $z_tabel .
+        ' ORDER BY ' . $kolejnosc . ' LIMIT :limit OFFSET :offset'
+    );
+    foreach ($parametry as $nazwa => $wartosc) {
+        $stmt->bindValue(':' . $nazwa, $wartosc);
+    }
+    $stmt->bindValue(':limit', $na_stronie, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $od_wiersza, PDO::PARAM_INT);
+    $stmt->execute();
+    $wizyty = $stmt->fetchAll();
+}
+
+$tytul = 'Moje wizyty';
+require __DIR__ . '/../czesci_wspolne/strona_gora.php';
 ?>
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Panel pracownika</title>
-    <link rel="stylesheet" href="/zasoby/styl.css">
-</head>
-<body>
-<div class="panel panel-wide">
-    <div class="topbar">
-        <div><strong>Witaj, <?= e($_SESSION['first_name']) ?></strong> <span class="badge">pracownik</span></div>
-        <div><a href="/publiczne/profil.php">Mój profil</a> &nbsp;|&nbsp; <a href="/publiczne/wylogowanie.php">Wyloguj się</a></div>
+
+<?php if (!$lektor): ?>
+    <div class="alert alert-error">
+        Twoje konto nie ma jeszcze profilu lektora. Skontaktuj się z administratorem.
+    </div>
+<?php else: ?>
+
+    <div class="karta">
+        <?php if (empty($jezyki_lektora)): ?>
+            Nie masz jeszcze przypisanych lekcji, więc nie możesz być rezerwowany. Skontaktuj się z administratorem.
+        <?php else: ?>
+            Uczysz języków: <strong><?= e(implode(', ', $jezyki_lektora)) ?></strong>
+        <?php endif; ?>
     </div>
 
-    <h1>Moje najbliższe wizyty</h1>
+    <p>
+        <a href="?widok=dzis" class="przycisk <?= $widok === 'dzis' ? '' : 'przycisk-szary' ?>">Dzisiaj</a>
+        <a href="?widok=przyszle" class="przycisk <?= $widok === 'przyszle' ? '' : 'przycisk-szary' ?>">Nadchodzące</a>
+        <a href="?widok=historia" class="przycisk <?= $widok === 'historia' ? '' : 'przycisk-szary' ?>">Historia</a>
+    </p>
 
-    <?php if (!$employee): ?>
-        <div class="alert alert-error">
-            To konto ma rolę pracownika, ale nie jest jeszcze powiązane z żadnym profilem
-            pracownika w tabeli <code>employees</code>. Skontaktuj się z administratorem.
-        </div>
-    <?php elseif (empty($reservations)): ?>
-        <p>Brak zaplanowanych wizyt.</p>
-    <?php else: ?>
-        <table>
-            <thead>
-                <tr><th>Data</th><th>Godzina</th><th>Usługa</th><th>Klient</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-                <?php foreach ($reservations as $r): ?>
-                    <tr>
-                        <td><?= e($r['reservation_date']) ?></td>
-                        <td><?= e(substr($r['start_time'], 0, 5)) ?>-<?= e(substr($r['end_time'], 0, 5)) ?></td>
-                        <td><?= e($r['service_name']) ?></td>
-                        <td><?= e($r['client_name']) ?></td>
-                        <td><?= e($r['status_name']) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php endif; ?>
-</div>
-</body>
-</html>
+    <div class="karta">
+        <h2>
+            <?php if ($widok === 'dzis'): ?>Wizyty na dziś
+            <?php elseif ($widok === 'przyszle'): ?>Nadchodzące wizyty
+            <?php else: ?>Historia wizyt<?php endif; ?>
+            (<?= $razem ?>)
+        </h2>
+
+        <?php if (empty($wizyty)): ?>
+            <p>Brak wizyt w tej zakładce.</p>
+        <?php else: ?>
+            <div class="tabela-przewijana">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Godzina</th>
+                            <th>Uczeń</th>
+                            <th>Telefon</th>
+                            <th>Lekcja</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($wizyty as $w): ?>
+                            <tr>
+                                <td><?= e($w['reservation_date']) ?></td>
+                                <td><?= e(substr($w['start_time'], 0, 5)) ?>-<?= e(substr($w['end_time'], 0, 5)) ?></td>
+                                <td><?= e($w['uczen']) ?></td>
+                                <td><?= e($w['telefon'] ?? '-') ?></td>
+                                <td><?= e($w['lekcja']) ?></td>
+                                <td><span class="status status-<?= e($w['status']) ?>"><?= e(nazwa_statusu($w['status'])) ?></span></td>
+                                <td><a href="<?= BASE_URL ?>/pracownik/wizyta.php?id=<?= (int) $w['id'] ?>" class="przycisk przycisk-maly przycisk-szary">Szczegóły</a></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php pokaz_strony($strona, $ile_stron); ?>
+        <?php endif; ?>
+    </div>
+
+<?php endif; ?>
+
+<?php require __DIR__ . '/../czesci_wspolne/strona_dol.php'; ?>
