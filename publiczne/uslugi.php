@@ -3,13 +3,11 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../konfiguracja/ustawienia.php';
 
-// ta strona jest dla wszystkich (takze niezalogowanych)
 $pdo = getPDO();
 
 $jezyki      = $pdo->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
 $filtr_jezyk = (int) ($_GET['jezyk'] ?? 0);
 
-// tylko aktywne lekcje + liczba lektorow, ktorzy je prowadza i maja ustawione godziny pracy
 $sql = 'SELECT s.id, s.name, s.description, s.price, s.duration_minutes, c.name AS jezyk,
                (SELECT COUNT(*)
                 FROM employee_services es
@@ -32,7 +30,6 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($parametry);
 $lekcje = $stmt->fetchAll();
 
-// po wybraniu jezyka pokazujemy tez lektorow, ktorzy go ucza
 $nazwa_jezyka     = '';
 $lektorzy_jezyka  = [];
 if ($filtr_jezyk > 0) {
