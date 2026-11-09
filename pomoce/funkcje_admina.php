@@ -14,6 +14,7 @@ function nazwa_statusu(string $status): string
     return $nazwy[$status] ?? $status;
 }
 
+// Polskie nazwy rol
 function nazwa_roli(string $rola): string
 {
     $nazwy = [
@@ -131,6 +132,7 @@ function uzupelnij_profile_lektorow(PDO $pdo): void
 
 function zmien_role(PDO $pdo, int $id_konta, string $nowa_rola): void
 {
+
     if ($nowa_rola === 'admin' || rola_konta($pdo, $id_konta) === 'admin') {
         throw new Exception('Administrator może być tylko jeden - roli administratora nie zmieniamy.');
     }
@@ -212,4 +214,19 @@ function usun_konto(PDO $pdo, int $id_konta): ?string
     }
 
     return null;
+}
+
+function jezyki_lektora(PDO $pdo, int $id_lektora): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT DISTINCT c.name
+         FROM employee_services es
+         JOIN services s ON s.id = es.service_id
+         JOIN categories c ON c.id = s.category_id
+         WHERE es.employee_id = :lektor
+         ORDER BY c.name'
+    );
+    $stmt->execute(['lektor' => $id_lektora]);
+
+    return $stmt->fetchAll(PDO::FETCH_COLUMN);
 }
