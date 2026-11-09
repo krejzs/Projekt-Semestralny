@@ -8,6 +8,7 @@ require_role(['admin']);
 $pdo   = getPDO();
 $bledy = [];
 
+// --- ktory lektor? (id jest w adresie: lektor_edycja.php?id=3) ---
 $id = (int) ($_GET['id'] ?? 0);
 
 $stmt = $pdo->prepare('SELECT * FROM employees WHERE id = :id');
@@ -21,6 +22,7 @@ if (!$lektor) {
 
 $id_konta = (int) ($lektor['user_id'] ?? 0);
 
+// dane do formularza (na start z bazy)
 $dane = [
     'imie'     => $lektor['first_name'],
     'nazwisko' => $lektor['last_name'],
@@ -34,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $akcja = $_POST['akcja'] ?? '';
 
+        // ---------- 1. zapis danych lektora ----------
         if ($akcja === 'dane') {
             $dane['imie']     = trim((string) ($_POST['imie'] ?? ''));
             $dane['nazwisko'] = trim((string) ($_POST['nazwisko'] ?? ''));
@@ -53,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $bledy[] = 'Numer telefonu ma nieprawidłowy format.';
             }
 
+            // e-mail nie moze nalezec do kogos innego
             if (empty($bledy)) {
                 $stmt = $pdo->prepare('SELECT id FROM users WHERE email = :email AND id <> :konto');
                 $stmt->execute(['email' => $dane['email'], 'konto' => $id_konta]);
@@ -83,6 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'email' => $dane['email'], 'telefon' => $telefon, 'id' => $id,
                     ]);
 
+                    // te same dane trzymamy tez w koncie logowania
                     if ($id_konta > 0) {
                         $stmt = $pdo->prepare(
                             'UPDATE users SET first_name = :imie, last_name = :nazwisko, email = :email, phone = :telefon
@@ -110,6 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+        // ---------- 2. przypisanie lekcji (relacja N:M) ----------
         } elseif ($akcja === 'lekcje') {
             $wybrane = $_POST['lekcje'] ?? [];
             if (!is_array($wybrane)) {
@@ -117,6 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $wybrane = array_unique(array_map('intval', $wybrane));
 
+            // sprawdzamy, czy kazde zaznaczone id to prawdziwa lekcja
             $poprawne = array_map('intval', $pdo->query('SELECT id FROM services')->fetchAll(PDO::FETCH_COLUMN));
             foreach ($wybrane as $id_lekcji) {
                 if (!in_array($id_lekcji, $poprawne, true)) {
@@ -131,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     $pdo->beginTransaction();
 
+                    // najprosciej: kasujemy stare przypisania i wstawiamy zaznaczone od nowa
                     $stmt = $pdo->prepare('DELETE FROM employee_services WHERE employee_id = :id');
                     $stmt->execute(['id' => $id]);
 
@@ -155,6 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+        // ---------- 3. dodanie godzin pracy ----------
         } elseif ($akcja === 'dodaj_dostepnosc') {
             $dzien = (int) ($_POST['dzien'] ?? 0);
             $od    = trim((string) ($_POST['od'] ?? ''));
@@ -166,9 +175,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!poprawna_godzina($od) || !poprawna_godzina($do)) {
                 $bledy[] = 'Podaj godziny w formacie GG:MM.';
             } elseif ($do <= $od) {
+                // godziny w formacie GG:MM mozna porownywac jak zwykly tekst
                 $bledy[] = 'Godzina zakończenia musi być późniejsza niż rozpoczęcia.';
             }
 
+            // nowe godziny nie moga nachodzic na juz istniejace w tym samym dniu
             if (empty($bledy)) {
                 $stmt = $pdo->prepare(
                     'SELECT id FROM employee_availability
@@ -191,7 +202,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 redirect('/administrator/lektor_edycja.php?id=' . $id);
             }
 
+        // ---------- 4. usuniecie godzin pracy ----------
         } elseif ($akcja === 'usun_dostepnosc') {
+            // warunek employee_id sprawia, ze nie usuniemy godzin innego lektora
             $stmt = $pdo->prepare('DELETE FROM employee_availability WHERE id = :id AND employee_id = :lektor');
             $stmt->execute(['id' => (int) ($_POST['id'] ?? 0), 'lektor' => $id]);
             flash('success', 'Usunięto godziny pracy.');
@@ -200,6 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// --- dane do wyswietlenia ---
 $wszystkie_lekcje = $pdo->query(
     'SELECT s.id, s.name, s.duration_minutes, s.active, c.name AS jezyk
      FROM services s
@@ -219,6 +233,9 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute(['id' => $id]);
 $godziny = $stmt->fetchAll();
+
+// jezyki lektora wynikaja z przypisanych mu lekcji
+$jezyki_lektora = jezyki_lektora($pdo, $id);
 
 $aktywne_menu = 'lektorzy.php';
 $tytul        = 'Lektor: ' . $lektor['first_name'] . ' ' . $lektor['last_name'];
@@ -258,6 +275,15 @@ $adres_formularza = BASE_URL . '/administrator/lektor_edycja.php?id=' . $id;
 <div class="karta">
     <h2>Lekcje, które prowadzi</h2>
 
+    <p>
+        Uczy języków:
+        <?php if (empty($jezyki_lektora)): ?>
+            <em>żadnych - zaznacz poniżej lekcje, które ma prowadzić</em>
+        <?php else: ?>
+            <strong><?= e(implode(', ', $jezyki_lektora)) ?></strong>
+        <?php endif; ?>
+    </p>
+
     <?php if (empty($wszystkie_lekcje)): ?>
         <p>Nie ma jeszcze żadnych lekcji w ofercie. Dodaj je w zakładce <a href="<?= BASE_URL ?>/administrator/lekcje.php">Lekcje</a>.</p>
     <?php else: ?>
@@ -266,11 +292,16 @@ $adres_formularza = BASE_URL . '/administrator/lektor_edycja.php?id=' . $id;
             <input type="hidden" name="akcja" value="lekcje">
 
             <div class="lista-checkbox">
+                <?php $poprzedni_jezyk = ''; ?>
                 <?php foreach ($wszystkie_lekcje as $lekcja): ?>
+                    <?php if ($lekcja['jezyk'] !== $poprzedni_jezyk): ?>
+                        <p style="margin:14px 0 6px;"><strong><?= e($lekcja['jezyk']) ?></strong></p>
+                        <?php $poprzedni_jezyk = $lekcja['jezyk']; ?>
+                    <?php endif; ?>
                     <label>
                         <input type="checkbox" name="lekcje[]" value="<?= (int) $lekcja['id'] ?>"
                                <?= in_array((int) $lekcja['id'], $przypisane, true) ? 'checked' : '' ?>>
-                        <?= e($lekcja['jezyk']) ?>: <?= e($lekcja['name']) ?> (<?= (int) $lekcja['duration_minutes'] ?> min)
+                        <?= e($lekcja['name']) ?> (<?= (int) $lekcja['duration_minutes'] ?> min)
                         <?= $lekcja['active'] ? '' : ' - ukryta' ?>
                     </label>
                 <?php endforeach; ?>
