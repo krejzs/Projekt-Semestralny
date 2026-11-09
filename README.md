@@ -2,21 +2,15 @@
 
 Baza danych (MySQL/MariaDB, InnoDB) obsługująca szkołę językową: nauczycieli, uczniów, kursy, harmonogram zajęć, zapisy, płatności i obecności.
 
-## Struktura
+**Dla każdego (bez logowania):** `Oferta lekcji` - lista aktywnych lekcji z filtrem po języku, szczegóły lekcji (opis, język, cena, czas, godziny pracy lektorów).
 
-- **languages** — słownik języków
-- **levels** — poziomy zaawansowania (A1–C1)
-- **teachers** — nauczyciele
-- **students** — uczniowie
-- **classrooms** — sale lekcyjne
-- **teacher_languages** — kwalifikacje nauczycieli (N:M nauczyciele ↔ języki)
-- **courses** — kursy (język + poziom + nauczyciel + termin + cena)
-- **lessons** — harmonogram konkretnych zajęć danego kursu
-- **enrollment_statuses** — słownik statusów zapisu
-- **enrollments** — zapisy uczniów na kursy (N:M uczniowie ↔ kursy)
-- **payment_methods** — słownik metod płatności
-- **payments** — płatności za kurs
-- **attendance** — obecności uczniów na lekcjach
+**Uczeń (klient):**
+- rezerwuje lekcję w krokach: lekcja -> lektor -> dzień -> godzina -> potwierdzenie,
+- widzi tylko wolne godziny (uwzględniamy godziny pracy lektora, czas trwania lekcji i zajęte terminy),
+- w panelu "Moje konto" ma nadchodzące lekcje i historię (zakończone / anulowane),
+- może anulować tylko własną, przyszłą lekcję.
+
+**Lektor (pracownik):** panel z zakładkami "Dzisiaj", "Nadchodzące", "Historia", szczegóły wizyty i zmiana statusu (potwierdź / zrealizowana / anuluj). Widzi tylko swoje wizyty.
 
 Pełny diagram relacji znajduje się w `database/szkola_jezykowa_ERD.md`.
 
@@ -39,3 +33,10 @@ LOGIN DO ADMINA <br>
 email: admin@admin.pl <br>
 hasło ADMIN123 <br>
 Link do strony: marcin798.smallhost.pl
+
+
+### Kolejność wgrywania bazy
+1. `schema.sql`
+2. `baza/01_rozszerzenie_logowania.sql`
+3. `baza/02_etap3_panel_admina.sql`
+4. `baza/04_etap4_rezerwacje.sql`
